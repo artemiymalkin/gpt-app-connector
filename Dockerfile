@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
   curl \
   wget \
   jq \
+  gosu \
   ripgrep \
   vim \
   nano \

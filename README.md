@@ -89,6 +89,12 @@ AGENT_HOME=/home/your-user/.gpt-connector/home
 AGENT_WORKSPACE_ROOT=/home/your-user/projects
 AGENT_HOST=/home/your-user
 
+# Use your real host UID/GID so generated files are not owned by root.
+# Find them with: id -u and id -g
+AGENT_UID=1000
+AGENT_GID=1000
+AGENT_RUN_AS_HOST_USER=true
+
 KEYCLOAK_ADMIN_PASSWORD=replace-with-strong-password
 KEYCLOAK_DB_PASSWORD=replace-with-strong-password
 KEYCLOAK_CONNECTOR_USER_PASSWORD=replace-with-strong-password
@@ -221,6 +227,31 @@ Inside the container:
 /host        Optional broad host mount, mounted from AGENT_HOST by docker-compose.override.yml
 ```
 
+## File ownership on host mounts
+
+By default, the container starts as root only long enough to prepare runtime directories, then runs the MCP process as the host UID/GID configured in `.env`:
+
+```env
+AGENT_UID=1000
+AGENT_GID=1000
+AGENT_RUN_AS_HOST_USER=true
+```
+
+Set these values to your host user IDs:
+
+```bash
+id -u
+id -g
+```
+
+This prevents files created by the agent under `/codebase`, `/workspace`, `/agent-home`, or `/host` from being owned by root on the host.
+
+If you need to disable this behavior for debugging, set:
+
+```env
+AGENT_RUN_AS_HOST_USER=false
+```
+
 ## Roots configuration
 
 The connector reads roots from a colon-separated list of JSON files:
@@ -274,6 +305,8 @@ Important variables:
 | `AGENT_HOME` | Host path for persistent agent notes/state. |
 | `AGENT_HOST` | Optional broad host path mounted as `/host` by `docker-compose.override.yml`. |
 | `AGENT_ROOTS_CONFIG` | Colon-separated list of root config JSON files inside the container. |
+| `AGENT_UID` / `AGENT_GID` | Host user and group IDs used to run the MCP process, preventing root-owned files on bind mounts. |
+| `AGENT_RUN_AS_HOST_USER` | Set to `true` by default. Set to `false` only if you intentionally want the container to run as root. |
 | `OAUTH_ISSUER` | OAuth issuer URL. For bundled Keycloak: `${MCP_PUBLIC_ORIGIN}/auth/realms/gpt-connector`. |
 | `OAUTH_JWKS_URI` | JWKS endpoint used to validate access tokens. |
 | `OAUTH_AUDIENCE` | Expected JWT audience. Defaults to the public resource origin. |
