@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getLogsRoot } from './cli';
+import { maskSecrets } from './fileTools';
 
 export function resolveInsideLogsRoot(inputPath: string) {
   const root = path.resolve(getLogsRoot());
@@ -83,7 +84,7 @@ export function readLog(input: { path: string; tailLines?: number; maxChars?: nu
     size: stat.size,
     modifiedAt: stat.mtime.toISOString(),
     truncated: originalLength > content.length,
-    content,
+    content: maskSecrets(content),
   };
 }
 

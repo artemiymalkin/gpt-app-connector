@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { execa } from 'execa';
 import { resolveWorkspacePath, getCodebaseRoot, getWorkspaceRoot as getMountedWorkspaceRoot, getAgentHomeRoot, getAllowedRoots } from './workspaces';
-import { maskSecrets } from './fileTools';
+import { isSecretFilePath, maskSecrets } from './fileTools';
 
 export type CommandResult = {
   command: string;
@@ -33,6 +33,21 @@ export function getLogsRoot() {
 
 export function resolveCwd(_workspaceRoot: string, cwd?: string) {
   return resolveWorkspacePath(cwd || '.');
+}
+
+
+function commandTouchesSecretFiles(command: string) {
+  const lowered = command.toLowerCase();
+  const readsFiles = /\b(cat|less|more|head|tail|sed|awk|grep|rg|ripgrep|find|fd|ls|tree|cp|tar|zip|python|python3|node)\b/.test(lowered);
+  const secretPathMentioned = /(^|[\s'"])(\.env(?:\.[^\s'"]*)?|[^\s'"]*secret[^\s'"]*|[^\s'"]*private[-_]?key[^\s'"]*)($|[\s'"])/i.test(command);
+  return readsFiles && secretPathMentioned;
+}
+
+function assertSafeCommand(command: string) {
+  if (process.env.ALLOW_CLI_SECRET_FILE_ACCESS === 'true') return;
+  if (commandTouchesSecretFiles(command)) {
+    throw new Error('Refusing to run a command that appears to read/search secret files. Move secrets outside mounted roots, use a dedicated safe tool, or set ALLOW_CLI_SECRET_FILE_ACCESS=true only for trusted local debugging.');
+  }
 }
 
 function truncate(value: string) {
@@ -99,6 +114,7 @@ export function recentCommands(limit = 20) {
 }
 
 export async function runCliTool(input: { command: string; cwd?: string; timeoutMs?: number }) {
+  assertSafeCommand(input.command);
   const workspaceRoot = getWorkspaceRoot();
   const cwd = resolveCwd(workspaceRoot, input.cwd);
   const timeoutMs = getTimeoutMs(input.timeoutMs);

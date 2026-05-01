@@ -3,9 +3,13 @@ import path from 'node:path';
 import { execa } from 'execa';
 import { resolveWorkspacePath } from './workspaces';
 
-const SECRET_FILE_PATTERNS = [/^\.env(\..*)?$/i, /secret/i, /private[-_]?key/i];
+export const SECRET_FILE_PATTERNS = [/^\.env(\..*)?$/i, /secret/i, /private[-_]?key/i];
+const SENSITIVE_KEYWORDS = ['TOKEN', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'API_KEY', 'ACCESS_KEY', 'DATABASE_URL', 'CREDENTIAL'];
 const SECRET_VALUE_PATTERNS = [
   /(OPENAI_API_KEY|ANTHROPIC_API_KEY|DATABASE_URL|JWT_SECRET|PRIVATE_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|[^\s=]*TOKEN|[^\s=]*SECRET|[^\s=]*PASSWORD)\s*=\s*[^\n\r]+/gi,
+  /[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|ACCESS_KEY|DATABASE_URL|CREDENTIAL)[A-Z0-9_]*[=:]\s*[^\s,;]+/gi,
+  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+  /\b[A-Za-z]:?\/?(?:home|Users)\/[A-Za-z0-9._-]+\/[^\s"']*/g,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
 ];
 
@@ -15,9 +19,14 @@ function isInside(root: string, candidate: string) {
   return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
 }
 
+export function isSecretFilePath(filePath: string) {
+  const base = path.basename(filePath);
+  return SECRET_FILE_PATTERNS.some((pattern) => pattern.test(base) || pattern.test(filePath));
+}
+
 function assertSafeFile(filePath: string, allowSecrets = false) {
   const base = path.basename(filePath);
-  if (!allowSecrets && SECRET_FILE_PATTERNS.some((pattern) => pattern.test(base) || pattern.test(filePath))) {
+  if (!allowSecrets && isSecretFilePath(filePath)) {
     throw new Error(`refusing to access likely secret file: ${filePath}`);
   }
 }
@@ -26,8 +35,9 @@ export function maskSecrets(value: string) {
   let output = value || '';
   for (const pattern of SECRET_VALUE_PATTERNS) {
     output = output.replace(pattern, (match) => {
-      const key = match.split('=')[0]?.trim();
-      return key && match.includes('=') ? `${key}=[REDACTED]` : '[REDACTED_SECRET]';
+      const separatorIndex = match.search(/[=:]/);
+      const key = separatorIndex >= 0 ? match.slice(0, separatorIndex).trim() : '';
+      return key ? `${key}=[REDACTED]` : '[REDACTED]';
     });
   }
   return output;
@@ -83,6 +93,7 @@ export function listFilesTool(input: { path?: string; depth?: number; limit?: nu
     for (const name of fs.readdirSync(dir)) {
       if (['node_modules', '.git', 'dist', 'build', '.next'].includes(name)) continue;
       const full = path.join(dir, name);
+      if (isSecretFilePath(full)) continue;
       const stat = fs.statSync(full);
       results.push({ path: full, relativePath: path.relative(root, full), type: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other', sizeBytes: stat.size });
       if (stat.isDirectory()) walk(full, depth - 1);
@@ -95,7 +106,7 @@ export function listFilesTool(input: { path?: string; depth?: number; limit?: nu
 
 export async function searchFilesTool(input: { cwd?: string; query: string; glob?: string; limit?: number }) {
   const cwd = resolveWorkspacePath(input.cwd || '.');
-  const args = ['--line-number', '--hidden', '--glob', '!node_modules', '--glob', '!dist', '--glob', '!build', '--glob', '!.git'];
+  const args = ['--line-number', '--hidden', '--glob', '!node_modules', '--glob', '!dist', '--glob', '!build', '--glob', '!.git', '--glob', '!.env', '--glob', '!.env.*', '--glob', '!**/*secret*', '--glob', '!**/*private-key*'];
   if (input.glob) args.push('--glob', input.glob);
   args.push(input.query, '.');
   const result = await execa('rg', args, { cwd, reject: false, timeout: 30000 });
@@ -106,7 +117,7 @@ export async function searchFilesTool(input: { cwd?: string; query: string; glob
 export async function gitStatusTool(input: { cwd?: string }) {
   const cwd = resolveWorkspacePath(input.cwd || '.');
   const result = await execa('git', ['status', '--short', '--branch'], { cwd, reject: false, timeout: 10000 });
-  return { cwd, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+  return { cwd, exitCode: result.exitCode, stdout: maskSecrets(result.stdout), stderr: maskSecrets(result.stderr) };
 }
 
 export async function gitDiffTool(input: { cwd?: string; staged?: boolean; maxChars?: number }) {
@@ -114,5 +125,5 @@ export async function gitDiffTool(input: { cwd?: string; staged?: boolean; maxCh
   const args = ['diff'];
   if (input.staged) args.push('--staged');
   const result = await execa('git', args, { cwd, reject: false, timeout: 30000 });
-  return { cwd, exitCode: result.exitCode, diff: maskSecrets(truncate(result.stdout, input.maxChars || 200000)), stderr: result.stderr };
+  return { cwd, exitCode: result.exitCode, diff: maskSecrets(truncate(result.stdout, input.maxChars || 200000)), stderr: maskSecrets(result.stderr) };
 }
