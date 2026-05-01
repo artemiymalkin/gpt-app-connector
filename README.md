@@ -305,4 +305,4 @@ Before publishing:
 
 ## License
 
-Add a license before publishing if you want others to use, modify, or redistribute the project.
+MIT License. See [LICENSE](LICENSE).
