@@ -1,0 +1,86 @@
+services:
+  chatgpt-cli-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatgpt-cli-agent
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    environment:
+      PORT: 9999
+      CODEBASE_ROOT: /codebase
+      WORKSPACE_ROOT: /workspace
+      AGENT_HOME_ROOT: /agent-home
+      LOGS_ROOT: /app/logs
+      KEYCLOAK_INTERNAL_ORIGIN: ${KEYCLOAK_INTERNAL_ORIGIN:-http://keycloak:8080/auth}
+      AGENT_AUTH_TOKEN: ${AGENT_AUTH_TOKEN}
+      AUTH_MODE: ${AUTH_MODE:-oauth}
+      MCP_PUBLIC_ORIGIN: ${MCP_PUBLIC_ORIGIN}
+      OAUTH_RESOURCE: ${OAUTH_RESOURCE:-${MCP_PUBLIC_ORIGIN}}
+      OAUTH_ISSUER: ${OAUTH_ISSUER}
+      OAUTH_JWKS_URI: ${OAUTH_JWKS_URI}
+      OAUTH_AUDIENCE: ${OAUTH_AUDIENCE:-${MCP_PUBLIC_ORIGIN}}
+      OAUTH_REQUIRED_SCOPE: ${OAUTH_REQUIRED_SCOPE:-cli:run}
+      COMMAND_TIMEOUT_MS: ${COMMAND_TIMEOUT_MS:-120000}
+      MAX_OUTPUT_CHARS: ${MAX_OUTPUT_CHARS:-200000}
+      MAX_COMMAND_TIMEOUT_MS: ${MAX_COMMAND_TIMEOUT_MS:-300000}
+    volumes:
+      # Codebase of this MCP connector, mounted to /codebase.
+      - ${AGENT_CODEBASE:-${AGENT_WORKSPACE}}:/codebase
+      # Workspace root with all projects/repositories, mounted to /workspace.
+      - ${AGENT_WORKSPACE_ROOT:-${AGENT_WORKSPACES_ROOT:-${AGENT_WORKSPACE}}}:/workspace
+      # Persistent agent home for notes/readmes/plans across chats.
+      - ${AGENT_HOME:-${HOME}/.ai-agent}:/agent-home
+      - agent-logs:/app/logs
+    # The connector itself runs from /app, baked into the image by Dockerfile.
+    # /codebase is source code; /workspace is the multi-project work area.
+    working_dir: /app
+    depends_on:
+      - keycloak
+
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: gpt-connector-keycloak-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: gpt-connector-keycloak
+    restart: unless-stopped
+    command:
+      - start
+      - --import-realm
+      - --http-enabled=true
+      - --http-relative-path=/auth
+      - --proxy-headers=xforwarded
+      - --hostname=${MCP_PUBLIC_ORIGIN}/auth
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_CONNECTOR_USER: ${KEYCLOAK_CONNECTOR_USER:-agent-user}
+      KEYCLOAK_CONNECTOR_USER_EMAIL: ${KEYCLOAK_CONNECTOR_USER_EMAIL:-agent-user@example.com}
+      KEYCLOAK_CONNECTOR_USER_PASSWORD: ${KEYCLOAK_CONNECTOR_USER_PASSWORD}
+    depends_on:
+      - keycloak-db
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+    ports:
+      # Exposed for Nginx Proxy Manager running on another server over Tailscale.
+      - "8080:8080"
+    expose:
+      - "8080"
+
+volumes:
+  agent-logs:
+  keycloak-db-data:

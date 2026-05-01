@@ -1,0 +1,122 @@
+{
+  "realm": "gpt-connector",
+  "enabled": true,
+  "displayName": "GPT Connector",
+  "registrationAllowed": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": true,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Default connector user role"
+      }
+    ]
+  },
+  "defaultRoles": [
+    "offline_access",
+    "uma_authorization",
+    "user"
+  ],
+  "clientScopes": [
+    {
+      "name": "cli:run",
+      "description": "Run CLI commands through the GPT connector MCP server",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Run CLI commands"
+      }
+    },
+    {
+      "name": "gpt-connector-audience",
+      "description": "Add MCP resource audience to access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "gpt-connector-resource-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "https://mcp.example.com",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "chatgpt-mcp-client",
+      "name": "ChatGPT MCP Client",
+      "description": "Static OAuth client for ChatGPT MCP connector linking",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "webOrigins": [
+        "https://chatgpt.com",
+        "https://chat.openai.com"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "cli:run",
+        "gpt-connector-audience"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "${KEYCLOAK_CONNECTOR_USER}",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Connector",
+      "lastName": "User",
+      "email": "${KEYCLOAK_CONNECTOR_USER_EMAIL}",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KEYCLOAK_CONNECTOR_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user",
+        "offline_access",
+        "uma_authorization"
+      ]
+    }
+  ]
+}
