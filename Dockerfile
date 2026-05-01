@@ -22,6 +22,9 @@ RUN npm install
 COPY . .
 RUN npm run build
 
+RUN chmod +x /app/scripts/docker-entrypoint.sh
+
 EXPOSE 9999
 
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["npm", "run", "start"]

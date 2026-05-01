@@ -13,6 +13,9 @@ services:
       WORKSPACE_ROOT: /workspace
       AGENT_HOME_ROOT: /agent-home
       LOGS_ROOT: /app/logs
+      HOME: /agent-home
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-AI Agent}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-ai-agent@example.local}
       KEYCLOAK_INTERNAL_ORIGIN: ${KEYCLOAK_INTERNAL_ORIGIN:-http://keycloak:8080/auth}
       AGENT_AUTH_TOKEN: ${AGENT_AUTH_TOKEN:-}
       AUTH_MODE: ${AUTH_MODE:-oauth}
