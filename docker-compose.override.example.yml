@@ -1,0 +1,12 @@
+services:
+  chatgpt-cli-agent:
+    volumes:
+      # Recommended local layout:
+      #   AGENT_CODEBASE=/home/your-user/.gpt-connector/code
+      #   AGENT_HOME=/home/your-user/.gpt-connector/home
+      #   AGENT_WORKSPACE_ROOT=/home/your-user/ent
+      #   AGENT_HOST=/home/your-user
+      #
+      # Docker exposes one broad private host directory to /host.
+      # Concrete subdirectories are configured in config/roots.local.json.
+      - ${AGENT_HOST:?Set AGENT_HOST to the broad host directory you want to expose}:/host

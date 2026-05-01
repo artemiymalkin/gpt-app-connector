@@ -1,0 +1,18 @@
+{
+  "$schema": "./roots.schema.json",
+  "description": "Local/private root configuration. Copy this file to config/roots.local.json and edit it. Do not commit roots.local.json. Paths should usually point inside /host, which is mounted by docker-compose.override.yml.",
+  "roots": [
+    {
+      "name": "host",
+      "path": "/host",
+      "aliases": ["@host"],
+      "description": "Broad private host directory mounted from AGENT_HOST. Use this only when a task explicitly needs access outside the normal workspace, such as moving connector files or editing local user configuration. Prefer narrower roots like @opencode when available."
+    },
+    {
+      "name": "opencode-config",
+      "path": "/host/.config/opencode",
+      "aliases": ["@opencode", "@opencode-config"],
+      "description": "OpenCode configuration directory. Use this when editing OpenCode agents, commands, providers, or other local OpenCode settings."
+    }
+  ]
+}

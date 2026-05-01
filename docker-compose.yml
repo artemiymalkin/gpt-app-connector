@@ -1,3 +1,5 @@
+name: gpt-connector
+
 services:
   chatgpt-cli-agent:
     build:
@@ -12,6 +14,9 @@ services:
       CODEBASE_ROOT: /codebase
       WORKSPACE_ROOT: /workspace
       AGENT_HOME_ROOT: /agent-home
+      # Colon-separated list of root config files. Public defaults are baked into /app/config.
+      # Add private machine-specific roots in config/roots.local.json or override this env var.
+      AGENT_ROOTS_CONFIG: ${AGENT_ROOTS_CONFIG:-/app/config/roots.json:/app/config/roots.local.json}
       LOGS_ROOT: /app/logs
       HOME: /agent-home
       GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-AI Agent}

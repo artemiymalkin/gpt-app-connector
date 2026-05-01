@@ -31,12 +31,12 @@ function getServer() {
       },
       {
         name: 'cli',
-        description: 'Execute a shell command inside an allowed root. cwd may be relative to /codebase, an absolute path under /codebase, /workspace or /agent-home, or an alias like @codebase, @workspace/project, @home/notes.',
+        description: 'Execute a shell command inside an allowed root. cwd may be relative to /codebase, an absolute path under a configured root, or an alias like @codebase, @workspace/project, @home/notes, @opencode.',
         inputSchema: {
           type: 'object',
           properties: {
             command: { type: 'string', description: 'Shell command to execute' },
-            cwd: { type: 'string', description: 'Working directory. Supports relative paths, absolute allowed paths, @workspace/... and @home/...' },
+            cwd: { type: 'string', description: 'Working directory. Supports relative paths, absolute allowed paths, and configured aliases such as @workspace/..., @home/..., @opencode/...' },
             timeoutMs: { type: 'number', description: 'Command timeout in milliseconds' },
           },
           required: ['command'],
@@ -104,7 +104,7 @@ function getServer() {
       },
       {
         name: 'workspace_info',
-        description: 'Get information about a workspace path: project type, package scripts, git status, and available binaries. Defaults to /workspace.',
+        description: 'Get information about a configured root path: project type, package scripts, git status, and available binaries. Defaults to /workspace.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -114,7 +114,7 @@ function getServer() {
       },
       {
         name: 'workspace_list',
-        description: 'List allowed roots and candidate project directories under /codebase, /workspace and /agent-home.',
+        description: 'List allowed roots and candidate project directories under built-in and JSON-configured roots.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -128,7 +128,7 @@ function getServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Path or alias, e.g. @workspace/project, @codebase, @home/notes, or an absolute allowed path' },
+            path: { type: 'string', description: 'Path or alias, e.g. @workspace/project, @codebase, @home/notes, @opencode, or an absolute allowed path' },
           },
         },
       },

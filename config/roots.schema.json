@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChatGPT CLI Agent MCP roots config",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Human/AI-readable explanation of what this config file is for."
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path", "aliases", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path inside the container. The path must already be mounted into the container if it points outside built-in mounts."
+          },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Explain to the AI what this directory is for and when it should use it."
+          }
+        }
+      }
+    }
+  }
+}

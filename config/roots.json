@@ -1,0 +1,24 @@
+{
+  "$schema": "./roots.schema.json",
+  "description": "Public default root configuration for the ChatGPT CLI Agent MCP. These roots tell the AI which directories exist, what they are for, and which aliases to use. Keep this file generic and safe to commit. Put machine-specific/private paths in config/roots.local.json instead.",
+  "roots": [
+    {
+      "name": "codebase",
+      "path": "/codebase",
+      "aliases": ["@codebase", "@code"],
+      "description": "Source code of this MCP connector itself. Use this only when changing the connector implementation, tool descriptions, Docker setup, auth, or documentation."
+    },
+    {
+      "name": "workspace",
+      "path": "/workspace",
+      "aliases": ["@workspace"],
+      "description": "Main workspace containing user projects and repositories. Use this for normal coding tasks, product work, tests, builds, and repository inspection."
+    },
+    {
+      "name": "agent-home",
+      "path": "/agent-home",
+      "aliases": ["@home", "@agent-home", "~"],
+      "description": "Persistent agent home for notes, plans, task state, scratch files, and local runtime data that should survive container restarts."
+    }
+  ]
+}

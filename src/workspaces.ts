@@ -16,11 +16,42 @@ export function getAgentHomeRoot() {
   return process.env.AGENT_HOME_ROOT || '/agent-home';
 }
 
+export function getRootsConfigPaths() {
+  return (process.env.AGENT_ROOTS_CONFIG || '/app/config/roots.json:/app/config/roots.local.json')
+    .split(':')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function getRootsConfigPath() {
+  return getRootsConfigPaths()[0];
+}
+
 export type WorkspaceRoot = {
   name: string;
   path: string;
   exists: boolean;
   writable: boolean;
+  aliases?: string[];
+  description?: string;
+  source?: 'built-in' | 'config';
+};
+
+type RootDefinition = {
+  name: string;
+  path: string;
+  aliases: string[];
+  description?: string;
+  source: 'built-in' | 'config';
+};
+
+type RootsConfig = {
+  roots?: Array<{
+    name?: unknown;
+    path?: unknown;
+    aliases?: unknown;
+    description?: unknown;
+  }>;
 };
 
 export function ensureAgentHome() {
@@ -30,15 +61,81 @@ export function ensureAgentHome() {
   return home;
 }
 
-function uniquePaths(paths: Array<{ name: string; path: string }>) {
-  const seen = new Set<string>();
-  const result: Array<{ name: string; path: string }> = [];
-  for (const item of paths) {
-    const resolved = path.resolve(item.path);
-    if (seen.has(resolved)) continue;
-    seen.add(resolved);
-    result.push({ name: item.name, path: resolved });
+function normalizeAlias(alias: string) {
+  const trimmed = alias.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('@') || trimmed === '~' ? trimmed : `@${trimmed}`;
+}
+
+function defaultRootDefinitions(): RootDefinition[] {
+  return [];
+}
+
+function readRootsConfigs(): Array<{ path: string; config: RootsConfig }> {
+  return getRootsConfigPaths().flatMap((configPath) => {
+    if (!fs.existsSync(configPath)) return [];
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return [{ path: configPath, config: parsed && typeof parsed === 'object' ? parsed : {} }];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`failed to parse roots config ${configPath}: ${message}`);
+    }
+  });
+}
+
+function configRootDefinitions(): RootDefinition[] {
+  return readRootsConfigs().flatMap(({ path: configPath, config }) => {
+    if (!Array.isArray(config.roots)) return [];
+
+    return config.roots.flatMap((root, index) => {
+    if (!root || typeof root.name !== 'string' || typeof root.path !== 'string') {
+        throw new Error(`invalid root at roots[${index}] in ${configPath}: name and path must be strings`);
+    }
+
+      const aliases = Array.isArray(root.aliases)
+        ? root.aliases.filter((alias): alias is string => typeof alias === 'string').map(normalizeAlias).filter(Boolean)
+        : [`@${root.name}`];
+
+      return [{
+        name: root.name,
+        path: root.path,
+        aliases,
+        description: typeof root.description === 'string' ? root.description : undefined,
+        source: 'config' as const,
+      }];
+    });
+  });
+}
+
+export function getRootDefinitions(): RootDefinition[] {
+  const definitions = [...defaultRootDefinitions(), ...configRootDefinitions()];
+  const seenNames = new Set<string>();
+  const seenPaths = new Set<string>();
+  const seenAliases = new Set<string>();
+  const result: RootDefinition[] = [];
+
+  for (const definition of definitions) {
+    const resolvedPath = path.resolve(definition.path);
+    if (seenNames.has(definition.name)) {
+      throw new Error(`duplicate root name in roots config: ${definition.name}`);
+    }
+    if (seenPaths.has(resolvedPath)) continue;
+
+    const aliases = definition.aliases.map(normalizeAlias).filter(Boolean);
+    for (const alias of aliases) {
+      if (seenAliases.has(alias)) {
+        throw new Error(`duplicate root alias in roots config: ${alias}`);
+      }
+    }
+
+    seenNames.add(definition.name);
+    seenPaths.add(resolvedPath);
+    aliases.forEach((alias) => seenAliases.add(alias));
+    result.push({ ...definition, path: resolvedPath, aliases });
   }
+
   return result;
 }
 
@@ -52,15 +149,32 @@ function isWritable(dir: string) {
 }
 
 export function getAllowedRoots(): WorkspaceRoot[] {
-  return uniquePaths([
-    { name: 'codebase', path: getCodebaseRoot() },
-    { name: 'workspace', path: getWorkspaceRoot() },
-    { name: 'agent-home', path: getAgentHomeRoot() },
-  ]).map((item) => ({
-    ...item,
+  return getRootDefinitions().map((item) => ({
+    name: item.name,
+    path: item.path,
+    aliases: item.aliases,
+    description: item.description,
+    source: item.source,
     exists: fs.existsSync(item.path),
     writable: fs.existsSync(item.path) ? isWritable(item.path) : false,
   }));
+}
+
+export function getRootAliases() {
+  return Object.fromEntries(
+    getRootDefinitions().flatMap((root) => root.aliases.map((alias) => [`${alias}/`, root.path])),
+  );
+}
+
+export function getGuideRoots() {
+  return Object.fromEntries(
+    getRootDefinitions().map((root) => [root.aliases[0] || `@${root.name}`, {
+      path: root.path,
+      description: root.description || `Configured root: ${root.name}`,
+      aliases: root.aliases,
+      source: root.source,
+    }]),
+  );
 }
 
 function isInside(root: string, candidate: string) {
@@ -79,29 +193,23 @@ function stripAlias(value: string, aliases: string[]) {
 
 export function resolveWorkspacePath(inputPath?: string) {
   const value = (inputPath || '.').trim() || '.';
-  const codebaseRoot = getCodebaseRoot();
-  const workspaceRoot = getWorkspaceRoot();
-  const agentHomeRoot = getAgentHomeRoot();
+  const rootDefinitions = getRootDefinitions();
 
-  let candidate: string;
+  let candidate: string | null = null;
 
-  const homeRemainder = stripAlias(value, ['@home', '@agent-home', '~']);
-  const codebaseRemainder = stripAlias(value, ['@codebase', '@code']);
-  const workspaceRemainder = stripAlias(value, ['@workspace']);
-
-  if (homeRemainder !== null) {
-    candidate = path.resolve(agentHomeRoot, homeRemainder);
-  } else if (codebaseRemainder !== null) {
-    candidate = path.resolve(codebaseRoot, codebaseRemainder);
-  } else if (workspaceRemainder !== null) {
-    candidate = path.resolve(workspaceRoot, workspaceRemainder);
-  } else if (path.isAbsolute(value)) {
-    candidate = path.resolve(value);
-  } else {
-    candidate = path.resolve(codebaseRoot, value);
+  for (const root of rootDefinitions) {
+    const remainder = stripAlias(value, root.aliases);
+    if (remainder !== null) {
+      candidate = path.resolve(root.path, remainder);
+      break;
+    }
   }
 
-  const allowedRoots = getAllowedRoots().map((root) => root.path);
+  if (candidate === null) {
+    candidate = path.isAbsolute(value) ? path.resolve(value) : path.resolve(getCodebaseRoot(), value);
+  }
+
+  const allowedRoots = rootDefinitions.map((root) => root.path);
   if (!allowedRoots.some((root) => isInside(root, candidate))) {
     throw new Error(`path is outside allowed roots: ${candidate}`);
   }
@@ -130,11 +238,8 @@ export function workspaceSelect(input: { path?: string }) {
   return {
     selectedPath: resolved,
     cwdForCli: resolved,
-    aliases: {
-      '@codebase/': getCodebaseRoot(),
-      '@workspace/': getWorkspaceRoot(),
-      '@home/': getAgentHomeRoot(),
-    },
+    aliases: getRootAliases(),
+    rootsConfigPaths: getRootsConfigPaths(),
     summary: summarizePath(resolved),
     usage: 'Use this selectedPath as cwd in subsequent cli/background/browser-related tool calls for this chat.',
   };
@@ -152,7 +257,7 @@ export function workspaceList(input: { depth?: number } = {}) {
     return { ...root, entries };
   });
 
-  return { roots, candidates };
+  return { rootsConfigPaths: getRootsConfigPaths(), roots, candidates };
 }
 
 function collectDirs(current: string, depth: number, entries: any[], base: string) {
@@ -198,6 +303,7 @@ export function agentHomeInfo() {
   return {
     path: home,
     notesPath: path.join(home, 'notes'),
+    rootsConfigPaths: getRootsConfigPaths(),
     exists: fs.existsSync(home),
     writable: isWritable(home),
     files: fs.readdirSync(home).slice(0, 200),

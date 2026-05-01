@@ -4,3 +4,7 @@ logs/
 *.log
 .env
 .DS_Store
+config/roots.local.json
+docker-compose.override.yml
+/roots.json
+/roots.example.json

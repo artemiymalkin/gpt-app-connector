@@ -37,7 +37,7 @@ export function maskSecrets(value: string) {
     output = output.replace(pattern, (match) => {
       const separatorIndex = match.search(/[=:]/);
       const key = separatorIndex >= 0 ? match.slice(0, separatorIndex).trim() : '';
-      return key ? `${key}=[REDACTED]` : '[REDACTED]';
+      return key ? `${key}=[MASKED]` : '[MASKED]';
     });
   }
   return output;

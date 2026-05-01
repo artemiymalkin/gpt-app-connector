@@ -64,12 +64,66 @@ At minimum, update these values in `.env`:
 
 ```env
 MCP_PUBLIC_ORIGIN=https://mcp.example.com
-AGENT_CODEBASE=/path/to/chatgpt-cli-agent
-AGENT_WORKSPACE_ROOT=/path/to/projects
-AGENT_HOME=~/.ai-agent
+AGENT_CODEBASE=/home/your-user/.gpt-connector/code
+AGENT_WORKSPACE_ROOT=/home/your-user/projects
+AGENT_HOME=/home/your-user/.gpt-connector/home
+AGENT_HOST=/home/your-user
 KEYCLOAK_ADMIN_PASSWORD=replace-with-strong-admin-password
 KEYCLOAK_DB_PASSWORD=replace-with-strong-db-password
 KEYCLOAK_CONNECTOR_USER_PASSWORD=replace-with-strong-login-password
+```
+
+
+## Recommended local directory layout
+
+For a clean self-hosted setup, keep the connector code, MCP runtime state, and user projects separate:
+
+```text
+/home/your-user/.gpt-connector/
+  code/   # git repository for this connector
+  home/   # persistent MCP/agent state, notes, tasks, and local runtime files
+
+/home/your-user/ent/  # projects/repositories exposed as @workspace
+/home/your-user       # optional broad host mount exposed as /host for selected local roots
+```
+
+Suggested `.env` values:
+
+```env
+AGENT_CODEBASE=/home/your-user/.gpt-connector/code
+AGENT_HOME=/home/your-user/.gpt-connector/home
+AGENT_WORKSPACE_ROOT=/home/your-user/ent
+AGENT_HOST=/home/your-user
+```
+
+The public `config/roots.json` contains generic roots that are safe to commit. Put machine-specific roots in `config/roots.local.json`, which is ignored by git. For example:
+
+```json
+{
+  "$schema": "./roots.schema.json",
+  "roots": [
+    {
+      "name": "opencode-config",
+      "path": "/host/.config/opencode",
+      "aliases": ["@opencode", "@opencode-config"],
+      "description": "OpenCode configuration directory. Use this when editing OpenCode agents, commands, providers, or other local OpenCode settings."
+    }
+  ]
+}
+```
+
+To move an existing checkout to the recommended location on the host:
+
+```bash
+mkdir -p ~/.gpt-connector
+mv /path/to/current/chatgpt-cli-agent ~/.gpt-connector/code
+mkdir -p ~/.gpt-connector/home
+```
+
+Then update `.env` so `AGENT_CODEBASE` points to `~/.gpt-connector/code` and run:
+
+```bash
+docker compose up -d --build
 ```
 
 ## Environment
@@ -231,7 +285,7 @@ After changing the realm import, recreate the Keycloak data volume or update the
 
 ```bash
 docker compose down
-docker volume rm chatgpt-cli-agent_keycloak-db-data 2>/dev/null || true
+docker volume rm gpt-connector_keycloak-db-data 2>/dev/null || true
 docker compose up -d --build
 ```
 
