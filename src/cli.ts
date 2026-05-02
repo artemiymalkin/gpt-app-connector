@@ -36,17 +36,54 @@ export function resolveCwd(_workspaceRoot: string, cwd?: string) {
 }
 
 
-function commandTouchesSecretFiles(command: string) {
-  const lowered = command.toLowerCase();
-  const readsFiles = /\b(cat|less|more|head|tail|sed|awk|grep|rg|ripgrep|find|fd|ls|tree|cp|tar|zip|python|python3|node)\b/.test(lowered);
-  const secretPathMentioned = /(^|[\s'"])(\.env(?:\.[^\s'"]*)?|[^\s'"]*secret[^\s'"]*|[^\s'"]*private[-_]?key[^\s'"]*)($|[\s'"])/i.test(command);
-  return readsFiles && secretPathMentioned;
+
+const ENV_LEAK_COMMANDS = [
+  /\benv\b/,
+  /\bprintenv\b/,
+  /\bexport\s+-p\b/,
+  /\bhistory\b/,
+  /\/proc\/self\/environ/,
+];
+
+function looksLikeEnvLeak(command: string) {
+  return ENV_LEAK_COMMANDS.some((r) => r.test(command));
+}
+
+function tokenize(command: string): string[] {
+  return command
+    .split(/\s+/)
+    .map((t) => t.replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean);
+}
+
+function isFileLike(token: string) {
+  if (token.startsWith('-')) return false;
+  if (token.includes('/') || token.includes('.') || token.startsWith('.')) return true;
+
+  // Common secret filenames that often appear without extension or path separator
+  return /^(id_rsa|id_dsa|id_ecdsa|id_ed25519)$/i.test(token);
+}
+
+function touchesSecretPath(command: string) {
+  const tokens = tokenize(command);
+
+  for (const token of tokens) {
+    if (!isFileLike(token)) continue;
+    if (isSecretFilePath(token)) return true;
+  }
+
+  return false;
 }
 
 function assertSafeCommand(command: string) {
   if (process.env.ALLOW_CLI_SECRET_FILE_ACCESS === 'true') return;
-  if (commandTouchesSecretFiles(command)) {
-    throw new Error('Refusing to run a command that appears to read/search secret files. Move secrets outside mounted roots, use a dedicated safe tool, or set ALLOW_CLI_SECRET_FILE_ACCESS=true only for trusted local debugging.');
+
+  if (looksLikeEnvLeak(command)) {
+    throw new Error('Blocked: environment access');
+  }
+
+  if (touchesSecretPath(command)) {
+    throw new Error('Blocked: secret file access');
   }
 }
 

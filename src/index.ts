@@ -15,15 +15,18 @@ import { workspaceList, workspaceSelect, agentHomeInfo, noteWrite, noteRead, not
 import { readFileTool, writeFileTool, editFileTool, listFilesTool, searchFilesTool, gitStatusTool, gitDiffTool } from './fileTools';
 import { taskCreate, taskRead, taskList, taskUpdate, taskFinish } from './tasks';
 import { getAgentGuide } from './agentGuide';
+import { discoverScriptTools, scriptToolsForMcp, runScriptTool } from './scriptTools';
 
 function getServer() {
   const server = new Server(
-    { name: 'chatgpt-cli-agent', version: '1.0.0' },
-    { capabilities: { tools: {} } }
+    { name: 'chatgpt-cli-agent', version: '1.1.0' },
+    { capabilities: { tools: { listChanged: true } } }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: [
+  server.setRequestHandler(ListToolsRequestSchema, () => {
+    const scriptTools = discoverScriptTools();
+    return {
+      tools: [
       {
         name: 'agent_guide',
         description: 'Onboarding guide for this MCP connector: roots, aliases, recommended workflow, examples, and important notes. Call this first in a new chat.',
@@ -281,11 +284,32 @@ function getServer() {
           },
         },
       },
-    ].map(addToolSecurityMetadata),
-  }));
+      {
+        name: 'script_tool_list',
+        description: 'List dynamic tools from /agent-home/tools',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'script_tool_call',
+        description: 'Call dynamic tool by name',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tool: { type: 'string' },
+            args: { type: 'object' },
+          },
+          required: ['tool'],
+        },
+      },
+      ...scriptToolsForMcp(scriptTools)
+      ].map(addToolSecurityMetadata),
+    };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
+    const scriptTools = discoverScriptTools();
+    const scriptToolMap = new Map(scriptTools.map(t => [t.name, t]));
     const args = request.params.arguments || {};
 
     if (name === 'agent_guide') {
@@ -428,6 +452,26 @@ function getServer() {
       return {
         content: [{ type: 'text', text: JSON.stringify({ reloading: true, delayMs: delay, note: 'Process will exit; Docker restart policy should start it again.' }, null, 2) }],
       };
+    }
+
+    if (name === 'script_tool_list') {
+      const tools = discoverScriptTools();
+      return { content: [{ type: 'text', text: JSON.stringify(tools.map((tool) => tool.name), null, 2) }] };
+    }
+
+    if (name === 'script_tool_call') {
+      const { tool, args } = request.params.arguments || {};
+      const tools = discoverScriptTools();
+      const scriptTool = tools.find((item) => item.name === tool);
+      if (!scriptTool) throw new Error(`Tool not found: ${tool}`);
+      const result = await runScriptTool(scriptTool, (args || {}) as any);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+
+    if (scriptToolMap.has(name)) {
+      const tool = scriptToolMap.get(name)!;
+      const result = await runScriptTool(tool, args as any);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
 
     throw new Error(`Tool ${name} not found`);

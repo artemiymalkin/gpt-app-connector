@@ -420,6 +420,142 @@ Track persistent coding tasks under the agent home directory.
 
 Inspect connector logs and recent command history.
 
+## Dynamic script tools
+
+The connector can expose additional MCP tools from small script-based toolsets stored under the agent home directory. This is useful for private integrations, internal APIs, project-specific automation, and local workflows that should not be committed to this public repository.
+
+By default, dynamic tools are discovered from:
+
+```text
+/agent-home/tools/<toolset>/toolset.json
+```
+
+You can override the tools directory with:
+
+```env
+AGENT_TOOLS_DIR=/agent-home/tools
+```
+
+Each subdirectory with a `toolset.json` manifest becomes a toolset. Tool names are exposed as:
+
+```text
+<toolset_name>_<tool_name>
+```
+
+For example, a manifest with `name: "demo"` and a tool named `hello` is exposed as the MCP tool `demo_hello`.
+
+### Toolset layout
+
+```text
+/agent-home/tools/demo/
+  toolset.json
+  hello.mjs
+  .env              # optional, private, never commit
+```
+
+Toolsets can also share environment values through:
+
+```text
+/agent-home/tools/.env
+```
+
+Toolset directories and `.env` files live under `/agent-home`, not under `/codebase`, so private tools and credentials are kept out of the public repository.
+
+### Manifest format
+
+```json
+{
+  "name": "demo",
+  "description": "Example private toolset",
+  "runtime": "node",
+  "timeoutMs": 30000,
+  "env": {
+    "required": ["DEMO_API_KEY"],
+    "optional": ["DEMO_BASE_URL"]
+  },
+  "tools": {
+    "hello": {
+      "description": "Return a greeting",
+      "script": "hello.mjs",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+```
+
+Supported runtimes:
+
+| Runtime | Command used |
+| --- | --- |
+| `node`, `mjs`, `js` | `node <script>` |
+| `python`, `python3`, `py` | `python3 <script>` |
+| `bash`, `sh` | `bash <script>` |
+| `tsx`, `ts` | `npx tsx <script>` |
+
+### Script contract
+
+Dynamic tool scripts receive the MCP tool arguments as JSON on stdin and must write JSON to stdout.
+
+Example `hello.mjs`:
+
+```js
+let input = '';
+for await (const chunk of process.stdin) input += chunk;
+const args = input.trim() ? JSON.parse(input) : {};
+
+console.log(JSON.stringify({
+  ok: true,
+  message: `Hello, ${args.name || 'world'}!`
+}));
+```
+
+If a script exits with a non-zero status, the connector returns a structured error containing the exit code and masked stdout/stderr.
+
+### Environment handling
+
+Dynamic tools do not receive the entire MCP process environment. The connector builds a restricted environment for each tool:
+
+- `PATH`
+- `HOME`
+- `AGENT_HOME_ROOT`
+- variables explicitly listed in the manifest `env.required` or `env.optional`
+
+Environment values are loaded from, in order:
+
+1. the MCP process environment,
+2. `/agent-home/tools/.env`,
+3. `/agent-home/tools/<toolset>/.env`.
+
+Later sources override earlier sources. Missing required variables cause the tool call to fail before the script starts.
+
+### Discovery and refresh behavior
+
+The MCP server discovers dynamic toolsets whenever it handles `tools/list` and tool calls. It also advertises the MCP capability:
+
+```json
+{
+  "tools": {
+    "listChanged": true
+  }
+}
+```
+
+Clients that support dynamic MCP tool discovery can refresh their tool list after new toolsets are added. Some clients cache tool schemas for the lifetime of a connection; in that case, reconnect the MCP connector after adding or renaming toolsets.
+
+### Security notes
+
+- Keep private toolsets under `/agent-home/tools`, not in the public repository.
+- Do not commit tool `.env` files, API keys, tokens, customer data, or private integration code.
+- Keep `toolset.json` names and tool names simple: letters, numbers, `_`, and `-`.
+- Tool scripts are executed with the permissions of the MCP container user and should be treated as trusted code.
+- Prefer narrow API tokens and least-privilege credentials for private integrations.
+- The connector masks known secret values in command output where possible, but tools should still avoid printing secrets.
+
 ## Keycloak realm audience
 
 The bundled Keycloak import file contains an example OAuth audience:

@@ -3,7 +3,22 @@ import path from 'node:path';
 import { execa } from 'execa';
 import { resolveWorkspacePath } from './workspaces';
 
-export const SECRET_FILE_PATTERNS = [/^\.env(\..*)?$/i, /secret/i, /private[-_]?key/i];
+export const SECRET_FILE_PATTERNS = [
+  /^\.env(\..*)?$/i,
+  /secret/i,
+  /private[-_]?key/i,
+  /token/i,
+  /password/i,
+  /\.ssh/,
+  /\.aws/,
+  /id_rsa/,
+  /\.pem$/,
+  /\.key$/,
+  /credentials\.json/i,
+  /\.npmrc/,
+  /\.pypirc/,
+  /\.docker\/config\.json/,
+];
 const SENSITIVE_KEYWORDS = ['TOKEN', 'SECRET', 'PASSWORD', 'PRIVATE_KEY', 'API_KEY', 'ACCESS_KEY', 'DATABASE_URL', 'CREDENTIAL'];
 const SECRET_VALUE_PATTERNS = [
   /(OPENAI_API_KEY|ANTHROPIC_API_KEY|DATABASE_URL|JWT_SECRET|PRIVATE_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|[^\s=]*TOKEN|[^\s=]*SECRET|[^\s=]*PASSWORD)\s*=\s*[^\n\r]+/gi,
